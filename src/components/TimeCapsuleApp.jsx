@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { create } from "ipfs-core";
 
 const LS_KEY = "timecapsules:v1";
 
@@ -29,60 +28,40 @@ export default function TimeCapsuleApp() {
   const [now, setNow] = useState(Date.now());
   const [selectedFile, setSelectedFile] = useState(null);
   const [unlockDate, setUnlockDate] = useState("");
-  const [ipfsNode, setIpfsNode] = useState(null);
-  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
 
   const fileInputRef = useRef(null);
 
-  // Start IPFS node in browser
-  useEffect(() => {
-    const initIpfs = async () => {
-      const node = await create();
-      setIpfsNode(node);
-      console.log("IPFS node ready");
-    };
-    initIpfs();
-  }, []);
-
-  // Countdown updater
+  // Countdown timer
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Save to localStorage
+  // Save capsules to localStorage
   useEffect(() => saveCapsules(capsules), [capsules]);
 
   const onFileChange = (e) => setSelectedFile(e.target.files?.[0]);
 
-  const uploadFile = async () => {
+  const createCapsule = () => {
     if (!selectedFile) return setMessage("No file selected.");
     if (!unlockDate) return setMessage("Select an unlock date.");
-    if (!ipfsNode) return setMessage("IPFS node not ready yet. Wait a moment.");
 
-    setUploading(true);
-    setMessage("Uploading...");
-
-    try {
-      const added = await ipfsNode.add(selectedFile);
-      const cid = added.cid.toString();
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
       const capsule = {
-        cid,
         filename: selectedFile.name,
         unlockDate,
+        dataUrl,
         createdAt: new Date().toISOString(),
       };
       setCapsules((prev) => [capsule, ...prev]);
       setSelectedFile(null);
       setUnlockDate("");
-      setMessage(`Uploaded! CID: ${cid}`);
-    } catch (err) {
-      console.error(err);
-      setMessage("Upload failed: " + (err?.message || err));
-    } finally {
-      setUploading(false);
-    }
+      setMessage("Capsule created!");
+    };
+    reader.readAsDataURL(selectedFile);
   };
 
   const removeCapsule = (index) =>
@@ -90,16 +69,15 @@ export default function TimeCapsuleApp() {
 
   const shareLink = (c) => {
     const url = new URL(window.location.href);
-    url.searchParams.set("cid", c.cid);
-    url.searchParams.set("unlock", c.unlockDate);
     url.searchParams.set("name", c.filename);
+    url.searchParams.set("unlock", c.unlockDate);
     return url.toString();
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-slate-100 p-6">
       <header className="max-w-3xl mx-auto mb-6">
-        <h1 className="text-3xl font-bold">⏳ Time Capsule dApp</h1>
+        <h1 className="text-3xl font-bold">⏳ Time Capsule dApp (Local)</h1>
       </header>
 
       <main className="max-w-3xl mx-auto space-y-6">
@@ -133,11 +111,10 @@ export default function TimeCapsuleApp() {
           />
 
           <button
-            onClick={uploadFile}
-            disabled={uploading}
+            onClick={createCapsule}
             className="px-4 py-2 rounded bg-cyan-500 text-black font-semibold"
           >
-            {uploading ? "Uploading..." : "Create Capsule"}
+            Create Capsule
           </button>
 
           {message && (
@@ -164,7 +141,6 @@ export default function TimeCapsuleApp() {
                     <p className="text-xs text-slate-300">
                       Unlocks: {new Date(c.unlockDate).toLocaleString()}
                     </p>
-                    <p className="text-xs text-emerald-300">CID: {c.cid}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <div className="font-mono">{fmt.text}</div>
@@ -172,9 +148,8 @@ export default function TimeCapsuleApp() {
                       {fmt.unlocked ? (
                         <a
                           className="px-3 py-1 bg-emerald-500 text-black rounded"
-                          href={`https://ipfs.io/ipfs/${c.cid}`}
-                          target="_blank"
-                          rel="noreferrer"
+                          href={c.dataUrl}
+                          download={c.filename}
                         >
                           Open
                         </a>
